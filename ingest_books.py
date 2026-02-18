@@ -9,7 +9,7 @@ from datetime import datetime
 import fitz  # PDF text extraction (PyMuPDF)
 from ebooklib import epub
 from bs4 import BeautifulSoup
-import memory_system
+from app import memory_system
 
 
 # =========================
