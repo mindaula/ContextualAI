@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Virtual env
+venv/
+
+# Vector indexes
+*.index
+*.faiss
+*_meta.json
+
+# OS
+.DS_Store

@@ -1,0 +1,752 @@
+# Advanced AI Tutor
+
+Advanced AI Tutor is a local-first, chunk-based retrieval AI system designed for low-hallucination academic question answering and structured knowledge storage.
+
+The system is built around semantic indexing of books, notes, and personal facts.
+All information is stored in vector form with metadata and retrieved deterministically before generation.
+
+The architecture prioritizes:
+
+* Chunk-based answering
+* Metadata-aware ranking (newer sources prioritized)
+* Persistent FAISS indexes
+* Strict module separation
+* Controlled routing
+* Minimal hallucination generation
+
+This is not a generic chatbot wrapper.
+It is a structured retrieval-first AI architecture.
+
+---
+
+# 1. Core Principle
+
+The system does not rely on raw generative capability.
+
+Instead:
+
+1. Books, repositories, and notes are ingested into structured chunks.
+2. Each chunk is embedded and stored in a FAISS index.
+3. Metadata (source, year, etc.) is stored alongside the text.
+4. Queries retrieve relevant chunks first.
+5. The LLM answers strictly using retrieved material.
+
+This reduces hallucination and enforces grounding in indexed knowledge.
+
+---
+
+# 2. Real Project Structure
+
+## Root Directory
+
+```
+.
+├── academic.index
+├── academic_meta.json
+├── app/
+├── books/
+├── config/
+├── conversation_backups/
+├── conversation_index.faiss
+├── conversation_meta.json
+├── current_session.json
+├── ingest_books.py
+├── llm/
+├── memory.index
+├── memory_meta.json
+├── personal.index
+├── personal_meta.json
+├── requirements_backup.txt
+└── venv/
+```
+
+All vector indexes are stored directly in the root directory.
+
+There is no abstracted "data/" or "vector_store/" folder.
+
+---
+
+# 3. Index Files
+
+## Academic Knowledge
+
+```
+academic.index
+academic_meta.json
+```
+
+Contains:
+
+* Chunked book content
+* Metadata per chunk
+* Source information
+* Publication year
+* Text content
+
+Ranking logic prioritizes:
+
+1. Semantic similarity
+2. Newer publication year (metadata-aware preference)
+
+---
+
+## Personal Knowledge
+
+```
+personal.index
+personal_meta.json
+```
+
+Stores:
+
+* Personal user facts
+* Embedded semantic representation
+* Minimal metadata
+
+Used for personal recall and contextual memory.
+
+---
+
+## Conversation Memory
+
+```
+conversation_index.faiss
+conversation_meta.json
+current_session.json
+conversation_backups/
+```
+
+Purpose:
+
+* Store previous user/assistant messages
+* Enable semantic recall of past discussions
+* Persist sessions
+* Archive conversations
+
+---
+
+## Legacy Memory
+
+```
+memory.index
+memory_meta.json
+```
+
+Used for compatibility or earlier memory logic.
+
+---
+
+# 4. Books and Ingestion
+
+## books/
+
+Contains raw source material.
+
+Books, notes, or structured text can be placed here.
+
+---
+
+## ingest_books.py
+
+Responsible for:
+
+* Reading book files
+* Splitting into chunks
+* Generating embeddings
+* Attaching metadata
+* Writing to academic.index
+* Updating academic_meta.json
+
+Chunking ensures:
+
+* Context granularity
+* Controlled answer scope
+* Reduced hallucination
+
+---
+
+# 5. Application Modules (app/)
+
+```
+app/
+├── api.py
+├── cli.py
+├── context_builder.py
+├── conversation_manager.py
+├── conversation_memory.py
+├── embedding_model.py
+├── engine.py
+├── fact_classifier.py
+├── __init__.py
+├── llm_interface.py
+├── llm_router.py
+├── main.py
+├── memory_system.py
+├── policy.py
+├── prompt_builder.py
+├── query_rewriter.py
+├── retriever.py
+└── safety.py
+```
+
+---
+
+# 6. Core Architecture
+
+## 6.1 main.py
+
+CLI entry point.
+
+Responsibilities:
+
+* Startup diagnostics
+* Memory status reporting
+* Interactive loop
+* Exit handling
+* Session saving
+
+---
+
+## 6.2 engine.py
+
+Central orchestration layer.
+
+Pipeline:
+
+1. Safety check
+2. Query rewrite (if needed)
+3. Route detection
+4. Retrieval
+5. Context building
+6. Prompt construction
+7. LLM invocation
+8. Memory update
+
+No direct retrieval logic is embedded here.
+
+---
+
+## 6.3 memory_system.py
+
+Handles:
+
+* FAISS index loading
+* Embedding storage
+* Metadata storage
+* Score-based search
+* Deduplication
+* Persistence
+
+Indexes exposed:
+
+* academic_index
+* personal_index
+
+Filtering and ranking logic is centralized here.
+
+---
+
+## 6.4 retriever.py
+
+Thin adapter.
+
+Does:
+
+* Call search functions
+* Format output
+* Return structured dictionaries
+
+Does not:
+
+* Apply thresholds
+* Modify scores
+* Perform ranking
+
+---
+
+## 6.5 llm_router.py
+
+Hybrid routing system.
+
+Determines:
+
+* academic
+* personal_store
+* personal_query
+* conversation_query
+* general
+
+Signals used:
+
+* Pattern matching
+* Conversation context
+* Embedding similarity
+* Fact classification
+
+---
+
+## 6.6 fact_classifier.py
+
+Detects if user input contains storable personal information.
+
+Used for automatic personal memory updates.
+
+---
+
+## 6.7 query_rewriter.py
+
+Normalizes context-dependent queries.
+
+Triggers:
+
+* Pronoun detection (DE/EN/ES/FR)
+* Short follow-ups
+* Academic context continuation
+
+Prevents ambiguous queries from reaching retrieval.
+
+---
+
+## 6.8 conversation_memory.py
+
+Semantic recall for past discussions.
+
+Stores:
+
+* Embedded conversation chunks
+* Metadata
+* Role-tagged entries
+
+Used when routing to conversation_query.
+
+---
+
+## 6.9 conversation_manager.py
+
+Handles:
+
+* Session load
+* Session save
+* Session archive
+* Discard
+* Recent message retrieval
+
+---
+
+## 6.10 prompt_builder.py
+
+Constructs structured prompts.
+
+Types:
+
+* Academic prompt
+* Personal prompt
+* General prompt
+
+Academic prompt enforces:
+
+* Structured answer format
+* Source-based grounding
+* No raw chunk quoting
+
+---
+
+## 6.11 llm_interface.py
+
+Provider abstraction.
+
+Configuration:
+
+```
+PROVIDER = "local"
+MODEL_NAME = "qwen2.5:3b"
+```
+
+Supports:
+
+* Local runtime models
+* API-based providers
+* Streaming
+* Key loading from config/
+
+---
+
+## 6.12 safety.py
+
+Rule-based filtering.
+
+Blocks:
+
+* Explicit misuse queries
+* Operational attack guidance
+
+Allows:
+
+* Theoretical explanations
+* Defensive knowledge
+
+---
+
+## 6.13 policy.py
+
+Defines system-level identity and constraints.
+
+Prevents:
+
+* Model self-claiming
+* Provider misrepresentation
+
+---
+
+## 6.14 context_builder.py
+
+Formats retrieved chunks into structured context blocks.
+
+Ensures:
+
+* Clean separation of context
+* No raw metadata leakage
+* Controlled prompt size
+
+---
+
+## 6.15 api.py
+
+Optional programmatic interface to engine.
+
+Enables external invocation without CLI.
+
+---
+
+## 6.16 cli.py
+
+Wrapper for terminal-based usage.
+
+---
+
+## 6.17 embedding_model.py
+
+Embedding backend abstraction.
+
+Used by:
+
+* memory_system
+* conversation_memory
+
+Replaceable without altering architecture.
+
+---
+
+# 7. Retrieval Strategy
+
+Academic retrieval:
+
+1. Embed query
+2. FAISS similarity search
+3. Retrieve top_k chunks
+4. Apply metadata-aware ranking
+5. Prefer newer sources
+6. Build structured context
+
+Personal retrieval:
+
+1. Embed query
+2. FAISS search
+3. Return fact objects
+
+Conversation retrieval:
+
+1. Embed query
+2. Search conversation_index
+3. Return relevant messages
+
+---
+
+# 8. Hallucination Reduction Strategy
+
+The system reduces hallucination by:
+
+* Chunk-based answering
+* Strict academic prompt constraints
+* No free-form world knowledge in academic mode
+* No raw chunk copying
+* Metadata-aware ranking
+* Rewrite normalization
+
+The model does not generate from scratch in academic mode.
+It synthesizes from retrieved chunks.
+
+---
+
+# 9. Metadata Handling
+
+Academic metadata includes:
+
+* source
+* year
+* text
+
+Newer books are prioritized when similarity is comparable.
+
+This ensures:
+
+* Updated knowledge preference
+* Reduced outdated answers
+* Controlled academic behavior
+
+---
+
+# 10. Conversation Persistence
+
+Sessions are stored in:
+
+```
+current_session.json
+conversation_backups/
+```
+
+Vector memory stored in:
+
+```
+conversation_index.faiss
+conversation_meta.json
+```
+
+Supports:
+
+* Context continuation
+* Session archiving
+* Session discard
+
+---
+
+# 11. Installation
+
+```
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements_backup.txt
+```
+
+Run (CLI):
+
+```
+python -m app.main
+```
+
+Run (API server):
+
+```
+python -m uvicorn app.api:app --host 0.0.0.0 --port 8000
+```
+
+For dual use CLI while API running
+python -m app.cli
+
+The API allows integration with:
+
+* Web frontends
+* Mobile applications
+* External services
+* Custom UI layers
+
+The system is not limited to CLI usage.
+
+---
+
+# 12. Model Interface Architecture
+
+The system acts as a strict interface layer between client applications and the underlying language model.
+
+Clients never communicate directly with the LLM.
+
+Instead, the flow is:
+
+Client → API/CLI → Engine → LLM Interface → Model
+Model → LLM Interface → Engine → Client
+
+The abstraction layer is implemented in:
+
+```
+app/llm_interface.py
+```
+
+This module is responsible for:
+
+* Model invocation
+* Provider abstraction
+* API-based model calls
+* Local LLM server communication
+* Response normalization
+
+The system can communicate with:
+
+* A locally running LLM server (e.g. via HTTP endpoint)
+* A remote API-based model provider
+* Any compatible backend exposed through HTTP
+
+Model backend selection is configurable inside `llm_interface.py`.
+
+This ensures:
+
+* Backend independence
+* Replaceable model providers
+* Isolation between retrieval logic and generation logic
+* No coupling between engine and specific LLM vendor
+
+The core architecture remains unchanged regardless of which model backend is used.
+
+---
+
+# 13. Knowledge Ingestion
+
+Books, repositories, and structured notes can be ingested using:
+
+```
+python ingest_books.py <path>
+```
+
+Supported inputs:
+
+* PDF files
+* EPUB files
+* Entire repositories (source code, markdown, text)
+* Notes collections
+
+Examples:
+
+Ingest a single PDF:
+
+```
+python ingest_books.py book.pdf --type book --year 2023
+```
+
+Ingest a repository:
+
+```
+python ingest_books.py ./my_repo --type repo --year 2024
+```
+
+Ingest everything in current directory:
+
+```
+python ingest_books.py *
+```
+
+Metadata can be provided via:
+
+* CLI arguments (`--source`, `--year`, `--type`)
+* metadata.txt file
+
+Each ingested chunk is stored with:
+
+* source
+* type
+* year
+* ingested_at
+
+Chunking strategy:
+
+* Text: semantic paragraph grouping (~300 words per chunk)
+* Code: block-based segmentation (~80 lines per chunk)
+
+Newer sources are prioritized during retrieval when similarity scores are comparable.
+
+---
+
+# 14. Deployment and Usage Scope
+
+This system is designed for production-style academic knowledge systems.
+
+It supports:
+
+* Local CLI usage
+* REST API integration
+* Web UI integration
+* Mobile app integration
+* Structured repository indexing
+* Book-based tutoring systems
+* Long-term persistent knowledge bases
+
+The architecture allows integration into:
+
+* Internal knowledge platforms
+* Educational tools
+* Research assistants
+* Code-aware tutoring systems
+
+The system serves as a controlled AI middleware layer between clients and language models.
+
+---
+
+# 15. Known Limitations
+
+* No horizontal scaling built-in
+* Rule-based safety layer
+* No automatic ingestion scheduler
+* No built-in authentication layer for API
+* No web browsing capability
+* Indexes stored locally
+* Backend model availability depends on configured provider
+
+These limitations are architectural decisions to maintain determinism, modularity, and system transparency.
+
+---
+
+# 16. Architectural Integrity
+
+Strict responsibility separation is enforced:
+
+* Router does not retrieve
+* Retriever does not rank
+* Memory system performs ranking and metadata handling
+* Prompt builder does not route
+* Engine orchestrates only
+* LLM interface abstracts provider implementation
+* Ingestion pipeline is independent of runtime inference
+
+Academic answering is retrieval-first and chunk-grounded.
+
+The system prioritizes:
+
+* Deterministic behavior
+* Metadata-aware ranking
+* Controlled context construction
+* Low hallucination generation
+* Persistent knowledge storage
+* Backend-agnostic model communication
+
+---
+
+# 17. System Summary
+
+Advanced AI Tutor is a structured, retrieval-driven AI system built around semantic chunk indexing and metadata-aware ranking.
+
+It functions as an intermediary intelligence layer between:
+
+* Client applications
+* A controlled knowledge base
+* A configurable language model backend
+
+Books, repositories, and notes are transformed into vectorized knowledge units and retrieved before generation.
+
+The architecture supports:
+
+* Stable long-term knowledge accumulation
+* Controlled academic answering
+* API-based deployment
+* CLI-based operation
+* Integration into external applications
+* Configurable local or remote LLM backends
+
+The system is intended for structured knowledge systems and controlled AI integration, not experimental chatbot usage.
+
+---
+
+# 16. Summary
+
+Advanced AI Tutor is a retrieval-first AI architecture built around chunked knowledge ingestion and metadata-aware ranking.
+
+It prioritizes grounded responses over generative freedom and maintains full local persistence of indexed knowledge.
+
+The system is designed for stability, clarity, and controlled AI-assisted knowledge retrieval.
