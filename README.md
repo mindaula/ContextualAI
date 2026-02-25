@@ -692,7 +692,7 @@ Response envelopes and streaming chunks follow OpenAI-style shapes (`chat.comple
 
 1. Clone repository.
    ```bash
-   git clone https://github.com/mindaula/ContextualAI
+   git clone github.com/mindaula/ContextualAI
    cd ContextualAI
    ```
 
@@ -725,3 +725,104 @@ Response envelopes and streaming chunks follow OpenAI-style shapes (`chat.comple
      -H "Content-Type: application/json" \
      -d '{"model":"LPIC","stream":false,"messages":[{"role":"user","content":"What is process scheduling?"}]}'
    ```
+
+## 13. Using This System with OpenWebUI
+
+OpenWebUI is an OpenAI-compatible web interface for chat-based model interaction.
+Official repository: https://github.com/open-webui/open-webui
+
+In this deployment, Docker runs OpenWebUI only as the frontend UI. ContextualAI remains the backend system that executes routing, retrieval, prompting, and model calls.
+
+Architecture mapping:
+
+```text
+ContextualAI (Backend API, port 8000)
+       v
+OpenWebUI (Docker container, port 3000)
+       v
+Browser / Mobile App
+```
+
+This system is compatible with OpenWebUI because:
+- It exposes OpenAI-style endpoints.
+- It provides `GET /v1/models`.
+- It provides `POST /v1/chat/completions`.
+- The `model` value is expected to match a local domain name under `knowledge/<domain>/`.
+- The API layer does not enforce built-in authentication.
+
+OpenWebUI sends requests to this backend endpoint:
+- `http://<server-host>:8000/v1/chat/completions`
+
+OpenWebUI receives responses from this system at that endpoint. It is not directly connecting to OpenAI servers and it is not using OpenAI-hosted models by default in this setup.
+
+Configuration implications:
+- `OPENAI_API_BASE_URL` must point to this ContextualAI backend (`http://<server-host>:8000/v1`).
+- `OPENAI_API_KEY` is accepted by OpenWebUI but ignored by this backend because no built-in auth enforcement is implemented.
+- No traffic goes to OpenAI unless the backend is explicitly configured to do so.
+
+Provider behavior note:
+If `PROVIDER=openai` is configured in `.env`, this backend may call OpenAI internally after receiving requests from OpenWebUI. Otherwise, inference stays local or is sent only to whichever provider is configured in ContextualAI.
+
+### Step 1 - Start ContextualAI API
+
+Start the API server:
+
+```bash
+uvicorn app.api.http_api:app --host 0.0.0.0 --port 8000
+```
+
+Notes:
+- Default port is `8000`.
+- Base URL for OpenAI-compatible access is `http://<server-host>:8000/v1`.
+
+### Step 2 - Run OpenWebUI via Docker
+
+Example:
+
+```bash
+docker run -d \
+  -p 3000:8080 \
+  -e OPENAI_API_BASE_URL=http://host.docker.internal:8000/v1 \
+  -e OPENAI_API_KEY=dummy \
+  --name openwebui \
+  ghcr.io/open-webui/open-webui:main
+```
+
+Notes:
+- `OPENAI_API_KEY` can be a dummy value because this server does not enforce API-key auth by default.
+- `OPENAI_API_BASE_URL` points OpenWebUI to this backend, not to OpenAI.
+- `host.docker.internal` allows the container to reach the host machine on Docker Desktop environments.
+- On Linux, `host.docker.internal` may not resolve; use the host IP address instead.
+
+### Model Configuration in OpenWebUI
+
+Set the following in OpenWebUI:
+- Base URL: `http://<server-host>:8000/v1`
+- API key: any placeholder value (for example `dummy`)
+- Model: must match a directory name in `knowledge/<domain>/`
+
+Model naming rule:
+- The model name is the domain folder name, not an OpenAI model ID.
+- Example: if the folder is `knowledge/LPIC/`, set model to `LPIC`.
+
+Example model value:
+- `LPIC`
+
+### Mobile Usage
+
+OpenWebUI supports mobile browser access.
+
+Typical access URL from phone on the same network:
+- `http://<server-ip>:3000`
+
+Deployment notes:
+- For public deployment, use HTTPS.
+- Place OpenWebUI behind a reverse proxy.
+- The interface behaves as a ChatGPT-style chat UI on mobile browsers.
+
+### Optional Production Note
+
+If exposed outside a trusted local network:
+- Use a reverse proxy such as `nginx` or `traefik`.
+- Enforce HTTPS.
+- Add authentication and access control at the proxy or gateway layer.
